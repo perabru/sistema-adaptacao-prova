@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Escola Máximu's | Professor</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="professor">
+  <div id="fileWarning" class="warning hidden">Abra pelo servidor local: <strong>http://localhost:5500/index.html</strong>. Não abra por duplo clique.</div>
+  <main id="loginView" class="login-shell"><section class="login-card"><div class="brand-mark">M</div><h1>Área do Professor</h1><p class="muted">Gere avaliações e atividades adaptadas com base nos laudos e nas orientações da coordenação.</p><form id="profLoginForm" class="form-grid single"><label>E-mail<input id="profEmail" type="email" autocomplete="email" required placeholder="professor@escola.com" /></label><label>Senha<div class="password-box"><input id="profSenha" type="password" autocomplete="current-password" required /><button type="button" class="eye-btn" data-toggle-password="profSenha">👁</button></div></label><button class="btn primary" type="submit">Entrar</button></form><p id="profLoginMsg" class="message"></p><a class="small-link" href="admin.html">Acesso da coordenação</a></section></main>
+  <main id="appView" class="app hidden"><button id="profHamburger" class="hamburger-btn" type="button" aria-label="Abrir menu" aria-expanded="false"><span></span><span></span><span></span></button><div id="profMenuBackdrop" class="menu-backdrop hidden"></div><aside class="sidebar"><div class="side-brand"><div class="brand-mark small">M</div><div><strong>Escola Máximu's</strong><span>Professor</span></div></div>
+      <nav><a href="#workspace" class="active">Gerar prova</a><a href="#orientacoes">Adaptações</a><a href="#preview">Prévia</a></nav><button id="profLogout" class="btn ghost full">Sair</button></aside>
+    <section class="content"><header class="topbar"><div><h2>Geração automática de prova adaptada</h2><p id="profResumo" class="muted">Carregando perfil...</p></div></header>
+      <section id="workspace" class="grid two"><article class="panel"><h3>1. Dados da avaliação</h3><div class="form-grid"><label>Turma<select id="profTurmaSelect"></select></label><label>Aluno<select id="profAlunoSelect"></select></label><label>Tipo<select id="tipoDocumento"><option value="AVALIAÇÃO">Avaliação</option><option value="ATIVIDADE">Atividade</option></select></label><label>Disciplina<input id="disciplina" placeholder="Matemática" /></label><label>Tema/conteúdo<input id="temaConteudo" placeholder="Ex.: frações, redes, interpretação de texto..." /></label><label>Data<input id="dataDocumento" type="date" /></label><label>Valor<input id="valorDocumento" placeholder="3,5" /></label><label>Quantidade de questões<input id="qtdQuestoes" type="number" min="1" max="20" value="6" /></label><label>Dificuldade<select id="dificuldade"><option>Fácil</option><option selected>Média</option><option>Difícil</option></select></label><label>Formato<select id="formatoQuestoes"><option value="misto">Misto</option><option value="multipla">Múltipla escolha</option><option value="discursiva">Discursiva</option></select></label>
+            <label class="span2 content-paste-box">Conteúdo ministrado para a IA local Ensino Médio<textarea id="conteudoMinistrado" rows="14" placeholder="COLE DE UM JEITO SIMPLES:&#10;&#10;MODELO 1 - TÓPICOS&#10;Tema: [tema da aula]&#10;Tópicos:&#10;- conceito 1&#10;- conceito 2&#10;- exemplo trabalhado&#10;Objetivo: o que o aluno deve aprender&#10;&#10;MODELO 2 - RESUMO&#10;Cole aqui o texto da apostila, resumo da aula ou conteúdo do slide.&#10;&#10;MODELO 3 - COM FÓRMULA&#10;Tema: Velocidade média&#10;Fórmula: v = Δs / Δt&#10;Exemplo: 120 km em 2 h = 60 km/h&#10;Objetivo: resolver situações-problema&#10;&#10;MODELO 4 - HUMANAS/LINGUAGENS&#10;Tema: Revolução Industrial&#10;Tópicos: causas, consequências, trabalho, urbanização&#10;Exemplo: mudanças nas fábricas e nas cidades"></textarea></label>
+            <div class="span2 content-helper">
+              <div class="helper-title">Forma simples de inserir o conteúdo</div>
+              <div class="helper-grid">
+                <div>
+                  <strong>1. Cole qualquer material</strong>
+                  <span>Resumo, tópicos, texto da apostila, slides, fórmulas, exemplos ou objetivos.</span>
+                </div>
+                <div>
+                  <strong>2. Organize se quiser</strong>
+                  <span>Use o botão organizar para transformar texto solto em estrutura de aula.</span>
+                </div>
+                <div>
+                  <strong>3. Gere a atividade</strong>
+                  <span>A IA local identifica disciplina, assunto, tópicos e nível cognitivo.</span>
+                </div>
+              </div>
+              <div class="helper-title mini">Modelos rápidos</div>
+              <div class="actions compact-actions">
+                <button class="btn light" type="button" data-content-example="simples">Modelo simples</button>
+                <button class="btn light" type="button" data-content-example="fracao">Frações</button>
+                <button class="btn light" type="button" data-content-example="crase">Crase</button>
+                <button class="btn light" type="button" data-content-example="fisica">Física</button>
+                <button class="btn light" type="button" data-content-example="redacao">Redação</button>
+                <button class="btn light" type="button" data-content-example="quimica">Química</button>
+                <button class="btn light" type="button" data-content-example="biologia">Biologia</button>
+                <button class="btn light" type="button" data-content-example="historia">História</button>
+              </div>
+              <div class="actions compact-actions">
+                <button id="organizarConteudoIa" class="btn secondary" type="button">Organizar conteúdo colado</button>
+                <button id="limparConteudoIa" class="btn ghost-dark" type="button">Limpar conteúdo</button>
+              </div>
+              <p class="muted small">Dica: quanto mais claro o campo Tema, Tópicos, Exemplos, Fórmulas e Objetivo, melhores serão as questões.</p>
+            </div>
+            </div><div id="alunoInfo" class="student-card compact"></div><h3>2. Tipo de adaptação</h3><div class="radio-row"><label><input type="radio" name="modoAdaptacao" value="auto" checked> Automática pela planilha</label><label><input type="radio" name="modoAdaptacao" value="basica"> Básica</label><label><input type="radio" name="modoAdaptacao" value="completa"> Completamente adaptada</label></div><label>Complemento do professor<textarea id="complementoProfessor" rows="4" placeholder="Ex.: reduzir alternativas, colocar imagens, aumentar espaço, prova toda em maiúsculas..."></textarea></label><div class="actions"><button id="salvarComplemento" class="btn secondary" type="button">Salvar complemento</button><button id="limparComplemento" class="btn light" type="button">Limpar</button></div></article>
+        <article class="panel editor-panel"><h3>3. Editor da prova</h3>
+          <p class="muted">Cole o conteúdo final no editor ou use a IA local Ensino Médio para gerar questões mais completas a partir do conteúdo ministrado.</p>
+          <div class="actions top-actions"><button id="gerarAutomatico" class="btn secondary" type="button">Gerar questões com IA Ensino Médio</button><button id="gerarPreview" class="btn primary" type="button">Gerar prévia</button></div>
+          <div class="word-toolbar" role="toolbar" aria-label="Ferramentas de edição">
+            <select id="formatBlock" title="Estilo do texto">
+              <option value="p">Texto normal</option>
+              <option value="h2">Título</option>
+              <option value="h3">Subtítulo</option>
+            </select>
+            <select id="fontSizeTool" title="Tamanho">
+              <option value="3">Normal</option>
+              <option value="4">Médio</option>
+              <option value="5">Grande</option>
+              <option value="6">Muito grande</option>
+            </select>
+            <button type="button" data-command="bold" title="Negrito"><b>N</b></button>
+            <button type="button" data-command="italic" title="Itálico"><i>I</i></button>
+            <button type="button" data-command="underline" title="Sublinhado"><u>S</u></button>
+            <button type="button" data-command="justifyLeft" title="Alinhar à esquerda">⟸</button>
+            <button type="button" data-command="justifyCenter" title="Centralizar">≡</button>
+            <button type="button" data-command="justifyRight" title="Alinhar à direita">⟹</button>
+            <button type="button" data-command="insertUnorderedList" title="Lista com marcadores">• Lista</button>
+            <button type="button" data-command="insertOrderedList" title="Lista numerada">1. Lista</button>
+            <button type="button" id="insertTableBtn" title="Inserir tabela">Tabela</button>
+            <button type="button" id="clearFormatBtn" title="Limpar formatação">Limpar</button>
+          </div>
+          <div id="questoesEditor" class="word-editor" contenteditable="true" aria-label="Editor da prova" spellcheck="true" data-placeholder="Cole aqui o conteúdo da prova ou atividade. Você também pode usar: ? Questão, @dica e @linhas."></div>
+          <textarea id="questoesTexto" class="editor hidden" aria-hidden="true"></textarea>
+          <div class="actions"><button id="baixarPdfAluno" class="btn primary" type="button">Exportar PDF do aluno</button><button id="baixarPdfTurma" class="btn light" type="button">PDFs da turma</button><button id="imprimirPreview" class="btn secondary" type="button">Imprimir prévia</button></div><p id="profMsg" class="message"></p></article></section>
+      <section id="orientacoes" class="panel"><h3>Adaptações aplicadas nesta prova/atividade</h3><div id="adaptRulesBox" class="cards"></div></section>
+      <section id="preview" class="panel preview-panel"><div class="section-head"><h3>Prévia</h3><span class="badge">A4</span></div><div id="previewProva" class="paper-preview"></div></section>
+    </section></main>
+  <div id="loadingOverlay" class="loading-overlay hidden" aria-hidden="true"><div class="loading-card"><div class="spinner-large" aria-hidden="true"></div><p class="loading-text">Processando...</p></div></div>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

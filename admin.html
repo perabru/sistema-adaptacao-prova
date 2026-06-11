@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Escola Máximu's | Coordenação</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="admin">
+  <div id="fileWarning" class="warning hidden">Abra pelo servidor local: <strong>http://localhost:5500/admin.html</strong>. Não abra por duplo clique.</div>
+
+  <main id="adminLoginView" class="login-shell">
+    <section class="login-card wide">
+      <div class="brand-mark">M</div>
+      <h1>Coordenação Pedagógica</h1>
+      <p class="muted">Sistema com login seguro e armazenamento em tempo real.</p>
+      <div class="tip"><strong>Importante:</strong> antes de usar, publique o arquivo <code>firebase-rules.json</code> nas regras do banco de dados e habilite o login por e-mail e senha no painel do projeto.</div>
+      <form id="adminLoginForm" class="form-grid single">
+        <label>E-mail<input id="adminEmail" type="email" autocomplete="email" required placeholder="coordenacao@escola.com" /></label>
+        <label>Senha<div class="password-box"><input id="adminSenha" type="password" autocomplete="current-password" required /><button type="button" class="eye-btn" data-toggle-password="adminSenha">👁</button></div></label>
+        <button class="btn primary" type="submit">Entrar</button>
+      </form>
+      <details class="first-register"><summary>Primeiro cadastro da coordenação</summary>
+        <form id="primeiroCadastroForm" class="form-grid">
+          <label>Nome<input id="firstNome" required placeholder="Coordenação Escola Máximu's" /></label>
+          <label>E-mail<input id="firstEmail" type="email" required placeholder="coordenacao@escola.com" /></label>
+          <label>Senha<div class="password-box"><input id="firstSenha" type="password" required minlength="6" /><button type="button" class="eye-btn" data-toggle-password="firstSenha">👁</button></div></label>
+          <label>Confirmar senha<div class="password-box"><input id="firstConfirmaSenha" type="password" required minlength="6" /><button type="button" class="eye-btn" data-toggle-password="firstConfirmaSenha">👁</button></div></label>
+          <button class="btn secondary span2" type="submit">Criar coordenação</button>
+        </form>
+      </details>
+      <p id="adminLoginMsg" class="message"></p>
+      <a class="small-link" href="index.html">Ir para área do professor</a>
+    </section>
+  </main>
+
+  <main id="adminAppView" class="app hidden">
+    <button id="adminHamburger" class="hamburger-btn" type="button" aria-label="Abrir menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    <div id="adminMenuBackdrop" class="menu-backdrop hidden"></div>
+    <aside class="sidebar">
+      <div class="side-brand"><div class="brand-mark small">M</div><div><strong>Escola Máximu's</strong><span>Coordenação</span></div></div>
+      <nav><a href="#painel" class="active">Painel</a><a href="#planilha">Planilha</a><a href="#cadastro-aluno">Cadastrar aluno</a><a href="#professores">Professores</a><a href="#alunos">Alunos</a><a href="#adaptacoes">Adaptações</a><a href="#backup">Backup</a></nav>
+      <button id="adminLogout" class="btn ghost full">Sair</button>
+    </aside>
+    <section class="content">
+      <header class="topbar"><div><h2>Gestão Pedagógica</h2><p id="adminResumo" class="muted">Dados sincronizados em tempo real.</p></div></header>
+      <section id="painel" class="stats-grid"><div class="stat"><span>Alunos</span><strong id="statAlunos">0</strong></div><div class="stat"><span>Turmas</span><strong id="statTurmas">0</strong></div><div class="stat"><span>Professores</span><strong id="statProfessores">0</strong></div><div class="stat"><span>Colunas lidas</span><strong id="statColunas">0</strong></div></section>
+
+      <section id="planilha" class="panel"><div class="section-head"><div><h3>Importar planilha de alunos</h3><p class="muted">Lê todas as abas, encontra automaticamente o cabeçalho, preserva todas as colunas e salva em tempo real.</p></div></div><div class="upload-row"><input id="arquivoPlanilha" type="file" accept=".xlsx,.xls,.csv" /><label class="check"><input id="substituirAlunos" type="checkbox" checked /> Substituir base atual</label><button id="btnImportarPlanilha" class="btn primary" type="button">Importar arquivo escolhido</button><button id="btnCarregarPadrao" class="btn secondary" type="button">Carregar planilha enviada</button></div><div id="importReport" class="report"></div></section>
+
+      <section id="cadastro-aluno" class="panel">
+        <div class="section-head">
+          <div>
+            <h3>Cadastrar aluno manualmente</h3>
+            <p class="muted">Use quando precisar incluir um aluno sem planilha. O registro é salvo em tempo real e já aparece para professores vinculados à turma.</p>
+          </div>
+          <span class="badge">Manual + Tempo real</span>
+        </div>
+        <form id="alunoManualForm" class="form-grid">
+          <label>Nome do aluno *<input id="manualAlunoNome" required placeholder="Nome completo do aluno" /></label>
+          <label>Turma *<input id="manualAlunoTurma" required list="turmasDatalist" placeholder="Ex.: 3º B, 1A, 2 Técnico" /></label>
+          <label>Número<input id="manualAlunoNumero" placeholder="Ex.: 17" /></label>
+          <label>Tipo de documento/adaptação<select id="manualAlunoTipoProva">
+            <option value="">Não informado</option>
+            <option value="Atividade adaptada">Atividade adaptada</option>
+            <option value="Avaliação adaptada">Avaliação adaptada</option>
+            <option value="Prova completamente adaptada">Prova completamente adaptada</option>
+            <option value="Prova objetiva / múltipla escolha">Prova objetiva / múltipla escolha</option>
+          </select></label>
+          <label class="span2">Diagnóstico / laudo / necessidade educacional<textarea id="manualAlunoDiagnostico" rows="3" placeholder="Ex.: TDAH, TEA, Dislexia, DI, DPAC, ansiedade, dificuldade de leitura..."></textarea></label>
+          <label class="span2">Adaptações necessárias<textarea id="manualAlunoAdaptacao" rows="3" placeholder="Ex.: fonte ampliada, prova com nome, letra maiúscula, mais tempo, enunciados simples, espaço maior..."></textarea></label>
+          <label class="span2">Orientações pedagógicas<textarea id="manualAlunoOrientacoes" rows="3" placeholder="Observações da coordenação para aparecerem na adaptação automática."></textarea></label>
+          <div class="actions span2">
+            <button class="btn primary" type="submit">Salvar aluno</button>
+            <button id="limparAlunoManual" class="btn light" type="button">Limpar formulário</button>
+          </div>
+        </form>
+        <datalist id="turmasDatalist"></datalist>
+        <p id="alunoManualMsg" class="message"></p>
+      </section>
+
+      <section id="professores" class="grid two"><article class="panel"><h3>Adicionar professor</h3><form id="professorForm" class="form-grid"><label>Nome<input id="cadProfNome" required placeholder="Nome completo" /></label><label>E-mail<input id="cadProfEmail" type="email" required placeholder="professor@escola.com" /></label><label>Senha<div class="password-box"><input id="cadProfSenha" type="password" required minlength="6" /><button type="button" class="eye-btn" data-toggle-password="cadProfSenha">👁</button></div></label><label>Confirmar senha<div class="password-box"><input id="cadProfConfirmaSenha" type="password" required minlength="6" /><button type="button" class="eye-btn" data-toggle-password="cadProfConfirmaSenha">👁</button></div></label><div class="span2"><label>Turmas vinculadas já cadastradas</label><div id="turmasCheckboxes" class="checks-box"></div></div><label class="span2">Turmas extras manuais<input id="cadProfTurmasExtras" placeholder="Ex.: 3º B, 2º A, Técnico Info | separe por vírgula" /></label><button class="btn secondary span2" type="submit">Cadastrar professor</button></form><p id="professorMsg" class="message"></p></article><article class="panel"><h3>Importar professores</h3><p class="muted">Planilha com colunas: nome, email/e-mail, senha e turmas. Para várias turmas, use vírgula, ponto e vírgula ou |.</p><input id="arquivoProfessores" type="file" accept=".xlsx,.xls,.csv" /><button id="btnImportarProfessores" class="btn light" type="button">Importar professores</button><div id="profImportReport" class="report"></div></article></section>
+
+      <section class="panel"><div class="section-head"><h3>Professores cadastrados</h3></div><div class="table-wrap"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Turmas</th><th>Ações</th></tr></thead><tbody id="professoresTabela"></tbody></table></div></section>
+      <section id="alunos" class="panel"><div class="section-head"><div><h3>Visualização e edição dos alunos</h3><p class="muted">Busque por nome, turma, diagnóstico, adaptação ou qualquer coluna importada.</p></div><input id="buscaAlunos" class="search" placeholder="Buscar aluno, turma, laudo..." /></div><div id="colunasLidas" class="chips"></div><div class="table-wrap large"><table id="alunosTabela"></table></div></section>
+      <section id="adaptacoes" class="panel"><h3>Adaptações feitas automaticamente</h3><div id="adminAdaptacoesBox" class="cards"></div></section>
+      <section id="backup" class="panel"><h3>Backup e manutenção</h3><div class="actions"><button id="exportBackup" class="btn primary">Baixar backup JSON</button><button id="resetSistema" class="btn danger">Zerar alunos e auditoria</button></div><p class="muted">Os dados ficam salvos em tempo real. O backup exporta alunos, professores visíveis e colunas preservadas.</p></section>
+    </section>
+  </main>
+
+  <div id="loadingOverlay" class="loading-overlay hidden" aria-hidden="true"><div class="loading-card"><div class="spinner-large" aria-hidden="true"></div><p class="loading-text">Processando...</p></div></div>
+
+  <div id="editModal" class="modal hidden"><div class="modal-card"><div class="section-head"><h3>Editar aluno</h3><button id="fecharModal" class="btn light">Fechar</button></div><div id="editFields" class="form-grid"></div><div class="actions"><button id="salvarEdicaoAluno" class="btn primary">Salvar alterações</button><button id="excluirAluno" class="btn danger">Excluir aluno</button></div><p id="editMsg" class="message"></p></div></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "usuarios": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao')",
+        ".validate": "newData.hasChildren(['role','nome','email'])"
+      },
+      ".indexOn": ["role"]
+    },
+    "alunos": {
+      ".read": "auth != null",
+      "$alunoId": {
+        ".write": "auth != null && root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao'",
+        "complementoProfessor": {
+          ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('role').val() === 'professor' || root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao')"
+        }
+      }
+    },
+    "auditoria": {
+      ".read": "auth != null && root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao'",
+      ".write": "auth != null"
+    }
+  }
+}
