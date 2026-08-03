@@ -5,8 +5,8 @@
     "usuarios": {
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao')",
-        ".validate": "newData.hasChildren(['role','nome','email'])"
+        ".write": "auth != null && (root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao' || (auth.uid === $uid && data.exists()))",
+        ".validate": "newData.hasChildren(['role','nome','email']) && (!data.exists() || newData.child('role').val() === data.child('role').val() || root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao')"
       },
       ".indexOn": ["role"]
     },
@@ -22,6 +22,12 @@
     "auditoria": {
       ".read": "auth != null && root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao'",
       ".write": "auth != null"
+    },
+    "bancoQuestoes": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('usuarios').child(auth.uid).child('role').val() === 'coordenacao')",
+        ".write": "auth != null && auth.uid === $uid"
+      }
     }
   }
 }

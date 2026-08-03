@@ -37,6 +37,9 @@
   let alunoSelecionado = null;
   let editAlunoId = null;
   let listenersStarted = false;
+  let documentoImportado = null;
+  let imagemSelecionadaEditor = null;
+  let bancoQuestoesCache = [];
 
   const $ = (id) => document.getElementById(id);
   const norm = (v) => String(v ?? '').trim();
@@ -229,6 +232,21 @@
       syncHidden();
     });
 
+    $('insertImageBtn')?.addEventListener('click', ()=>$('editorImageUpload')?.click());
+    $('editorImageUpload')?.addEventListener('change', async e=>{
+      const files=Array.from(e.target.files||[]);
+      for(const file of files) await inserirImagemNoEditor(file);
+      e.target.value='';
+      syncHidden();
+    });
+    $('insertSupportBtn')?.addEventListener('click', ()=>{
+      focusEditor();
+      const texto=prompt('Digite ou cole o texto de apoio desta questão:');
+      if(!norm(texto)) return;
+      document.execCommand('insertHTML',false,`<div class="support-text"><strong>Texto de apoio</strong><p>${escapeHtml(texto).replace(/\n/g,'<br>')}</p></div><p><br></p>`);
+      syncHidden();
+    });
+
     $('clearFormatBtn')?.addEventListener('click', ()=>{
       focusEditor();
       document.execCommand('removeFormat', false, null);
@@ -237,7 +255,17 @@
 
     editor.addEventListener('input', syncHidden);
     editor.addEventListener('blur', syncHidden);
+    editor.addEventListener('click', e=>{
+      const img=e.target.closest?.('img');
+      selecionarImagemEditor(img||null);
+    });
     editor.addEventListener('paste', e=>{
+      const imageFiles=Array.from(e.clipboardData?.files||[]).filter(f=>f.type.startsWith('image/'));
+      if(imageFiles.length){
+        e.preventDefault();
+        Promise.all(imageFiles.map(inserirImagemNoEditor)).then(syncHidden);
+        return;
+      }
       e.preventDefault();
       const html = e.clipboardData?.getData('text/html');
       const text = e.clipboardData?.getData('text/plain') || '';
@@ -249,6 +277,47 @@
       }
       syncHidden();
     });
+
+    $('imageWidth')?.addEventListener('input',e=>{ if(imagemSelecionadaEditor){ imagemSelecionadaEditor.style.width=`${e.target.value}%`; imagemSelecionadaEditor.style.height='auto'; syncHidden(); }});
+    $('imageAlignLeft')?.addEventListener('click',()=>alinharImagemEditor('left',syncHidden));
+    $('imageAlignCenter')?.addEventListener('click',()=>alinharImagemEditor('center',syncHidden));
+    $('imageAlignRight')?.addEventListener('click',()=>alinharImagemEditor('right',syncHidden));
+    $('imageRemove')?.addEventListener('click',()=>{ if(imagemSelecionadaEditor){ imagemSelecionadaEditor.remove(); selecionarImagemEditor(null); syncHidden(); }});
+  }
+
+  function inserirImagemNoEditor(file){
+    return new Promise((resolve,reject)=>{
+      if(!file?.type?.startsWith('image/')) return reject(new Error('Selecione um arquivo de imagem.'));
+      if(file.size>8*1024*1024) return reject(new Error('A imagem deve ter no máximo 8 MB.'));
+      const reader=new FileReader();
+      reader.onload=async()=>{
+        const optimized=await optimizeImageDataUrl(reader.result,1400,0.86);
+        const html=`<figure class="editor-image-wrap"><img src="${optimized}" alt="Imagem da questão" style="width:60%;height:auto;display:block;margin:12px auto"><figcaption contenteditable="true">Legenda da imagem (opcional)</figcaption></figure><p><br></p>`;
+        $('questoesEditor')?.focus();
+        document.execCommand('insertHTML',false,html);
+        resolve();
+      };
+      reader.onerror=()=>reject(new Error('Não foi possível ler a imagem.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function optimizeImageDataUrl(dataUrl,maxSide=1400,quality=.86){
+    return new Promise(resolve=>{ const img=new Image(); img.onload=()=>{ const scale=Math.min(1,maxSide/Math.max(img.width,img.height)); const canvas=document.createElement('canvas'); canvas.width=Math.max(1,Math.round(img.width*scale)); canvas.height=Math.max(1,Math.round(img.height*scale)); canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height); resolve(canvas.toDataURL('image/jpeg',quality)); }; img.onerror=()=>resolve(dataUrl); img.src=dataUrl; });
+  }
+
+  function selecionarImagemEditor(img){
+    document.querySelectorAll('#questoesEditor img.selected-editor-image').forEach(x=>x.classList.remove('selected-editor-image'));
+    imagemSelecionadaEditor=img;
+    $('imageTools')?.classList.toggle('hidden',!img);
+    if(img){ img.classList.add('selected-editor-image'); const width=parseInt(img.style.width||'60',10); if($('imageWidth')) $('imageWidth').value=Math.min(100,Math.max(15,width||60)); }
+  }
+
+  function alinharImagemEditor(align,sync){
+    if(!imagemSelecionadaEditor) return;
+    imagemSelecionadaEditor.style.display='block';
+    imagemSelecionadaEditor.style.margin=align==='center'?'12px auto':(align==='right'?'12px 0 12px auto':'12px auto 12px 0');
+    sync?.();
   }
 
   function sanitizePastedHtml(html){
@@ -259,11 +328,12 @@
       [...el.attributes].forEach(attr=>{
         const name=attr.name.toLowerCase();
         if(name.startsWith('on')) el.removeAttribute(attr.name);
+        if(name==='src' && el.tagName==='IMG' && !/^(data:image\/|https?:\/\/)/i.test(attr.value)) el.removeAttribute(attr.name);
         if(name==='style'){
           const safe = attr.value
             .split(';')
             .map(x=>x.trim())
-            .filter(x=>/^(text-align|font-weight|font-style|text-decoration|font-size)\s*:/i.test(x))
+            .filter(x=>/^(text-align|font-weight|font-style|text-decoration|font-size|width|height|display|margin|max-width|object-fit)\s*:/i.test(x))
             .join('; ');
           if(safe) el.setAttribute('style', safe); else el.removeAttribute('style');
         }
@@ -598,12 +668,10 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
   function setupAdmin(){
     setupPasswordEyes(); setupHamburgerMenus(); renderAdaptationLibrary('adminAdaptacoesBox');
     $('adminLoginForm')?.addEventListener('submit', async e=>{ e.preventDefault(); setMsg('adminLoginMsg','Entrando...'); try{ await auth.signInWithEmailAndPassword(norm($('adminEmail').value), norm($('adminSenha').value)); }catch(error){ setMsg('adminLoginMsg', firebaseError(error),'error'); } });
-    $('primeiroCadastroForm')?.addEventListener('submit', async e=>{ e.preventDefault(); const form=$('primeiroCadastroForm'); const submitBtn=e.submitter || form?.querySelector('button[type="submit"]'); setMsg('adminLoginMsg','Criando coordenação...'); try{ await withBusyState(submitBtn,'Criando coordenação...', async()=>{ const senha=requireSamePassword('firstSenha','firstConfirmaSenha'); const cred=await auth.createUserWithEmailAndPassword(norm($('firstEmail').value), senha); await db.ref('usuarios/'+cred.user.uid).set({role:'coordenacao', nome:norm($('firstNome').value), email:norm($('firstEmail').value), turmas:[], criadoEm:nowIso(), ativo:true}); await audit('primeiro_cadastro_coordenacao',{email:norm($('firstEmail').value)}); }); setMsg('adminLoginMsg','Coordenação criada com sucesso.','ok'); }catch(error){ setMsg('adminLoginMsg', firebaseError(error),'error'); } });
     $('professorForm')?.addEventListener('submit', cadastrarProfessor);
     $('alunoManualForm')?.addEventListener('submit', cadastrarAlunoManual);
     $('limparAlunoManual')?.addEventListener('click', ()=>{ $('alunoManualForm')?.reset(); setMsg('alunoManualMsg',''); });
     $('btnImportarPlanilha')?.addEventListener('click', ()=>{ const file=$('arquivoPlanilha')?.files?.[0]; if(!file){ $('importReport').textContent='Selecione uma planilha.'; return; } importarPlanilhaAlunos(file); });
-    $('btnCarregarPadrao')?.addEventListener('click', carregarPlanilhaPadrao);
     $('btnImportarProfessores')?.addEventListener('click', importarPlanilhaProfessores);
     $('adminLogout')?.addEventListener('click', ()=>auth.signOut());
     $('buscaAlunos')?.addEventListener('input', renderAlunosTable);
@@ -622,7 +690,7 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
 
   function showAdminLogin(){ $('adminLoginView')?.classList.remove('hidden'); $('adminAppView')?.classList.add('hidden'); }
   function showAdminApp(){ $('adminLoginView')?.classList.add('hidden'); $('adminAppView')?.classList.remove('hidden'); }
-  function detachListeners(){ if(listenersStarted){ db.ref('alunos').off(); db.ref('usuarios').off(); listenersStarted=false; } }
+  function detachListeners(){ if(listenersStarted){ db.ref('alunos').off(); db.ref('usuarios').off(); if(currentUser) db.ref(`bancoQuestoes/${currentUser.uid}`).off(); listenersStarted=false; } }
 
   function startAdminRealtime(){
     if(listenersStarted) detachListeners(); listenersStarted=true;
@@ -830,11 +898,6 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
     }
   }
 
-  async function carregarPlanilhaPadrao(){
-    if(!window.XLSX){ $('importReport').textContent='Biblioteca XLSX não carregada.'; return; }
-    try{ $('importReport').textContent='Carregando ALUNOS COM LAUDO_2026.xlsx...'; const res=await fetch('ALUNOS COM LAUDO_2026.xlsx'); if(!res.ok) throw new Error('Arquivo padrão não encontrado na pasta.'); const blob=await res.blob(); const file=new File([blob], 'ALUNOS COM LAUDO_2026.xlsx'); await importarPlanilhaAlunos(file); }catch(error){ $('importReport').textContent='Erro ao carregar planilha enviada: '+firebaseError(error); }
-  }
-
   async function importarPlanilhaProfessores(){
     const file=$('arquivoProfessores')?.files?.[0]; if(!file){ $('profImportReport').textContent='Selecione a planilha de professores.'; return; }
     $('profImportReport').textContent='Importando professores...';
@@ -850,9 +913,123 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
   function exportBackup(){ const data={geradoEm:nowIso(), alunos:alunosCache, professores:professoresCache, turmas:turmasCache, colunas:colunasCache}; downloadText('backup_escola_maximus.json', JSON.stringify(data,null,2)); }
   async function resetSistema(){ if(!confirm('Zerar alunos e auditoria do sistema? Professores e coordenação serão mantidos.'))return; await db.ref('alunos').remove(); await db.ref('auditoria').remove(); await audit('reset_sistema',{}); }
 
+  function setupDocumentImport(){
+    const zone=$('documentDropZone'), input=$('documentUpload');
+    if(!zone || !input) return;
+    const choose=()=>input.click();
+    zone.addEventListener('click',choose);
+    zone.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); choose(); }});
+    ['dragenter','dragover'].forEach(ev=>zone.addEventListener(ev,e=>{ e.preventDefault(); zone.classList.add('dragging'); }));
+    ['dragleave','drop'].forEach(ev=>zone.addEventListener(ev,e=>{ e.preventDefault(); zone.classList.remove('dragging'); }));
+    zone.addEventListener('drop',e=>{ const file=e.dataTransfer?.files?.[0]; if(file) processarDocumentoImportado(file); });
+    input.addEventListener('change',e=>{ const file=e.target.files?.[0]; if(file) processarDocumentoImportado(file); input.value=''; });
+    $('usarDocumentoNoConteudo')?.addEventListener('click',()=>{ if(documentoImportado?.text){ $('conteudoMinistrado').value=documentoImportado.text; setMsg('profMsg','Conteúdo do documento carregado para a IA local.','ok'); }});
+    $('usarDocumentoNoEditor')?.addEventListener('click',()=>{ if(!documentoImportado)return; const html=documentoImportado.html||`<div class="imported-document">${escapeHtml(documentoImportado.text).replace(/\n/g,'<br>')}</div>`; setEditorContent(`${getEditorContent()}${html}`); setMsg('profMsg','Documento inserido no editor. Revise a formatação antes de gerar o PDF.','ok'); });
+    $('removerDocumento')?.addEventListener('click',limparDocumentoImportado);
+  }
+
+  async function processarDocumentoImportado(file){
+    const status=$('documentImportStatus');
+    status.textContent=`Lendo ${file.name}...`;
+    try{
+      if(file.size>20*1024*1024) throw new Error('O arquivo deve ter no máximo 20 MB.');
+      const ext=(file.name.split('.').pop()||'').toLowerCase();
+      let text='', html='';
+      if(file.type.startsWith('image/')){
+        const data=await optimizeImageDataUrl(await fileToDataUrl(file),1400,.86);
+        html=`<figure class="editor-image-wrap"><img src="${data}" alt="${escapeHtml(file.name)}" style="width:70%;height:auto;display:block;margin:12px auto"><figcaption>${escapeHtml(file.name)}</figcaption></figure>`;
+      }else if(ext==='docx'){
+        if(!window.mammoth) throw new Error('Leitor de DOCX não carregado. Verifique a internet.');
+        const result=await window.mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()});
+        html=sanitizePastedHtml(result.value); text=editorContentToPlainText(html);
+      }else if(ext==='pdf'){
+        if(!window.pdfjsLib) throw new Error('Leitor de PDF não carregado. Verifique a internet.');
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+        const pages=[];
+        for(let i=1;i<=pdf.numPages;i++){ const p=await pdf.getPage(i); const c=await p.getTextContent(); pages.push(c.items.map(x=>x.str).join(' ')); }
+        text=pages.join('\n\n'); html=`<div class="imported-document">${escapeHtml(text).replace(/\n/g,'<br>')}</div>`;
+      }else if(['txt','html','htm'].includes(ext)){
+        text=await file.text(); html=ext==='txt'?`<div class="imported-document">${escapeHtml(text).replace(/\n/g,'<br>')}</div>`:sanitizePastedHtml(text); if(ext!=='txt') text=editorContentToPlainText(html);
+      }else throw new Error('Formato não aceito. Use PDF, DOCX, TXT, HTML ou imagem.');
+      documentoImportado={name:file.name,text,html};
+      status.textContent=`Arquivo pronto: ${file.name}${text?` • ${text.length} caracteres extraídos`:''}`;
+      $('usarDocumentoNoConteudo')?.classList.toggle('hidden',!text);
+      $('usarDocumentoNoEditor')?.classList.remove('hidden');
+      $('removerDocumento')?.classList.remove('hidden');
+    }catch(error){ documentoImportado=null; status.textContent=`Erro: ${firebaseError(error)}`; }
+  }
+
+  function fileToDataUrl(file){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=reject; r.readAsDataURL(file); }); }
+  function limparDocumentoImportado(){ documentoImportado=null; if($('documentImportStatus')) $('documentImportStatus').textContent=''; ['usarDocumentoNoConteudo','usarDocumentoNoEditor','removerDocumento'].forEach(id=>$(id)?.classList.add('hidden')); }
+
+  function setupDocumentOptions(){
+    $('tipoDocumento')?.addEventListener('change',e=>$('tipoDocumentoPersonalizadoBox')?.classList.toggle('hidden',e.target.value!=='personalizado'));
+    $('disciplina')?.addEventListener('input',()=>renderSugestoesPedagogicas(alunoSelecionado));
+    $('formatoQuestoes')?.addEventListener('change',atualizarControlesFormato);
+    $('qtdObjetivas')?.addEventListener('input',sincronizarTotalMisto);
+    $('qtdDiscursivas')?.addEventListener('input',sincronizarTotalMisto);
+    atualizarControlesFormato();
+  }
+
+  function atualizarControlesFormato(){
+    const formato=$('formatoQuestoes')?.value||'misto';
+    $('qtdObjetivasBox')?.classList.toggle('hidden',formato!=='misto');
+    $('qtdDiscursivasBox')?.classList.toggle('hidden',formato!=='misto');
+    $('qtdQuestoesBox')?.classList.toggle('hidden',formato==='misto');
+    if(formato==='misto') sincronizarTotalMisto();
+  }
+
+  function sincronizarTotalMisto(){
+    const objetivas=Math.max(1,Math.min(20,parseInt($('qtdObjetivas')?.value||'3',10)));
+    const discursivas=Math.max(1,Math.min(20,parseInt($('qtdDiscursivas')?.value||'3',10)));
+    if($('qtdQuestoes')) $('qtdQuestoes').value=Math.min(25,objetivas+discursivas);
+  }
+
+  function getDocumentType(){ const selected=norm($('tipoDocumento')?.value)||'AVALIAÇÃO'; return selected==='personalizado'?(norm($('tipoDocumentoPersonalizado')?.value)||'DOCUMENTO'):selected; }
+
+  function renderSugestoesPedagogicas(aluno){
+    const box=$('sugestoesPedagogicasBox'); if(!box)return;
+    const disciplina=lower($('disciplina')?.value||'');
+    const gerais=['Apresente um comando por vez e confirme a compreensão.','Permita tempo de organização antes da resposta.'];
+    let area=[];
+    if(/mat|fis|quim/.test(disciplina)) area=['Destaque dados, unidades e fórmulas antes do cálculo.','Divida situações-problema em etapas numeradas.'];
+    else if(/port|liter|reda|ingl/.test(disciplina)) area=['Antecipe o vocabulário essencial do texto.','Permita marcações e releitura do texto-base.'];
+    else if(/hist|geo|socio|filo/.test(disciplina)) area=['Use linha do tempo, mapa mental ou comparação visual.','Relacione conceitos abstratos a exemplos do cotidiano.'];
+    else if(/bio|cien/.test(disciplina)) area=['Use esquemas, imagens legendadas e relações de causa e efeito.','Retome os conceitos essenciais antes da aplicação.'];
+    else area=['Associe o conteúdo a um exemplo concreto.','Use recursos visuais quando ajudarem na compreensão.'];
+    const adapt=detectAdaptations(aluno||{}).filter(r=>!['nome','qr'].includes(r.id)).slice(0,3).map(r=>r.what);
+    box.innerHTML=[...new Set([...area,...gerais,...adapt])].map((s,i)=>`<div class="card-mini active"><strong>Sugestão ${i+1}</strong><p>${escapeHtml(s)}</p></div>`).join('');
+  }
+
+  function setupQuestionBank(){
+    $('salvarBancoQuestoes')?.addEventListener('click',salvarNoBancoQuestoes);
+    $('buscaBancoQuestoes')?.addEventListener('input',renderBancoQuestoes);
+    $('filtroBancoDisciplina')?.addEventListener('input',renderBancoQuestoes);
+  }
+
+  async function salvarNoBancoQuestoes(){
+    const conteudo=getEditorContent();
+    if(!norm(editorContentToPlainText(conteudo))){ setMsg('profMsg','Crie ou cole questões no editor antes de salvar.','error'); return; }
+    if(new Blob([conteudo]).size>4*1024*1024){ setMsg('profMsg','O conteúdo está muito grande para o banco. Reduza o tamanho ou a quantidade de imagens.','error'); return; }
+    const key=uid();
+    await db.ref(`bancoQuestoes/${currentUser.uid}/${key}`).set({disciplina:norm($('disciplina')?.value),tema:norm($('temaConteudo')?.value),dificuldade:norm($('dificuldade')?.value),conteudo,criadoEm:nowIso()});
+    await audit('salvar_banco_questoes',{id:key});
+    setMsg('profMsg','Questões salvas no seu banco.','ok');
+  }
+
+  function renderBancoQuestoes(){
+    const box=$('bancoQuestoesLista'); if(!box)return;
+    const busca=lower($('buscaBancoQuestoes')?.value||''), disc=lower($('filtroBancoDisciplina')?.value||'');
+    const list=bancoQuestoesCache.filter(q=>(!disc||lower(q.disciplina).includes(disc))&&(!busca||lower(`${q.disciplina} ${q.tema} ${editorContentToPlainText(q.conteudo)}`).includes(busca)));
+    box.innerHTML=list.map(q=>`<article class="question-bank-item"><div><strong>${escapeHtml(q.tema||'Questões sem título')}</strong><span>${escapeHtml(q.disciplina||'Sem disciplina')} • ${escapeHtml(q.dificuldade||'')}</span><p>${escapeHtml(editorContentToPlainText(q.conteudo).slice(0,180))}</p></div><div class="actions"><button class="btn secondary" data-bank-use="${q.id}" type="button">Usar no editor</button><button class="btn danger" data-bank-delete="${q.id}" type="button">Excluir</button></div></article>`).join('')||'<p class="muted">Nenhuma questão encontrada.</p>';
+    box.querySelectorAll('[data-bank-use]').forEach(btn=>btn.addEventListener('click',()=>{ const q=bancoQuestoesCache.find(x=>x.id===btn.dataset.bankUse); if(q){ setEditorContent(q.conteudo); if(q.disciplina)$('disciplina').value=q.disciplina; if(q.tema)$('temaConteudo').value=q.tema; setMsg('profMsg','Questões carregadas no editor.','ok'); }}));
+    box.querySelectorAll('[data-bank-delete]').forEach(btn=>btn.addEventListener('click',async()=>{ if(confirm('Excluir estas questões do seu banco?')) await db.ref(`bancoQuestoes/${currentUser.uid}/${btn.dataset.bankDelete}`).remove(); }));
+  }
+
   // ===== PROFESSOR =====
   function setupProfessor(){
-    setupPasswordEyes(); setupHamburgerMenus(); setupContentExampleButtons(); renderAdaptationLibrary('adaptRulesBox'); setupWordEditor();
+    setupPasswordEyes(); setupHamburgerMenus(); setupContentExampleButtons(); renderAdaptationLibrary('adaptRulesBox'); setupWordEditor(); setupDocumentImport(); setupDocumentOptions(); setupQuestionBank();
     $('profLoginForm')?.addEventListener('submit', async e=>{ e.preventDefault(); setMsg('profLoginMsg','Entrando...'); try{ await auth.signInWithEmailAndPassword(norm($('profEmail').value), norm($('profSenha').value)); }catch(error){ setMsg('profLoginMsg', firebaseError(error),'error'); } });
     $('profLogout')?.addEventListener('click', ()=>auth.signOut());
     $('profTurmaSelect')?.addEventListener('change', renderAlunosProfessor);
@@ -874,10 +1051,10 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
 
   function showProfLogin(){ $('loginView')?.classList.remove('hidden'); $('appView')?.classList.add('hidden'); }
   function showProfApp(){ $('loginView')?.classList.add('hidden'); $('appView')?.classList.remove('hidden'); }
-  function startProfessorRealtime(){ if(listenersStarted) detachListeners(); listenersStarted=true; db.ref('alunos').on('value', snap=>{ const val=snap.val()||{}; const allowed=Array.isArray(currentProfile.turmas)?currentProfile.turmas.map(norm):[]; alunosCache=Object.entries(val).map(([id,a])=>({id,...a})).filter(a=>allowed.includes(norm(a.turma))); refreshDerivedCaches(); initProfessorWorkspace(); }, err=>setMsg('profMsg',firebaseError(err),'error')); }
+  function startProfessorRealtime(){ if(listenersStarted) detachListeners(); listenersStarted=true; db.ref('alunos').on('value', snap=>{ const val=snap.val()||{}; const allowed=Array.isArray(currentProfile.turmas)?currentProfile.turmas.map(norm):[]; alunosCache=Object.entries(val).map(([id,a])=>({id,...a})).filter(a=>allowed.includes(norm(a.turma))); refreshDerivedCaches(); initProfessorWorkspace(); }, err=>setMsg('profMsg',firebaseError(err),'error')); db.ref(`bancoQuestoes/${currentUser.uid}`).on('value',snap=>{ bancoQuestoesCache=Object.entries(snap.val()||{}).map(([id,q])=>({id,...q})).sort((a,b)=>String(b.criadoEm||'').localeCompare(String(a.criadoEm||''))); renderBancoQuestoes(); }); }
   function initProfessorWorkspace(){ const turmas=Array.isArray(currentProfile.turmas)?currentProfile.turmas:[]; $('profResumo').textContent=`${currentProfile.nome || currentProfile.email} • ${turmas.length} turma(s) vinculada(s) • tempo real`; const sel=$('profTurmaSelect'); const old=sel.value; sel.innerHTML=turmas.length?turmas.map(t=>`<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join(''):'<option value="">Nenhuma turma vinculada</option>'; if(old && turmas.includes(old)) sel.value=old; if($('dataDocumento') && !$('dataDocumento').value) $('dataDocumento').value=today(); renderAlunosProfessor(); }
   function renderAlunosProfessor(){ const turma=$('profTurmaSelect')?.value; const alunos=alunosCache.filter(a=>norm(a.turma)===norm(turma)).sort((a,b)=>norm(a.nome).localeCompare(norm(b.nome),'pt-BR')); const old=$('profAlunoSelect')?.value; $('profAlunoSelect').innerHTML=alunos.length?alunos.map(a=>`<option value="${a.id}">${escapeHtml(a.nome)}</option>`).join(''):'<option value="">Nenhum aluno nesta turma</option>'; if(old && alunos.some(a=>a.id===old)) $('profAlunoSelect').value=old; updateAlunoSelecionado(); }
-  function updateAlunoSelecionado(){ alunoSelecionado=alunosCache.find(a=>a.id===$('profAlunoSelect')?.value)||null; const box=$('alunoInfo'); if(!alunoSelecionado){ box.innerHTML='<p class="muted">Selecione um aluno.</p>'; return; } $('complementoProfessor').value=alunoSelecionado.complementoProfessor||''; const rules=detectAdaptations(alunoSelecionado); box.innerHTML=`<p><strong>Aluno:</strong> ${escapeHtml(alunoSelecionado.nome)}</p><p><strong>Turma:</strong> ${escapeHtml(alunoSelecionado.turma)} ${alunoSelecionado.numero?`• <strong>Nº:</strong> ${escapeHtml(alunoSelecionado.numero)}`:''}</p><p><strong>Diagnóstico/laudo:</strong> ${escapeHtml(alunoSelecionado.diagnostico||'Não informado')}</p><p><strong>Orientações da planilha:</strong> ${escapeHtml(alunoSelecionado.orientacoes||alunoSelecionado.adaptacao||'Não informado')}</p><p><strong>Adaptações detectadas:</strong> ${escapeHtml(rules.map(r=>r.title).join('; ') || 'Adaptação básica')}</p>`; renderActiveAdaptations(rules); }
+  function updateAlunoSelecionado(){ alunoSelecionado=alunosCache.find(a=>a.id===$('profAlunoSelect')?.value)||null; const box=$('alunoInfo'); if(!alunoSelecionado){ box.innerHTML='<p class="muted">Selecione um aluno.</p>'; renderSugestoesPedagogicas(null); return; } $('complementoProfessor').value=alunoSelecionado.complementoProfessor||''; const rules=detectAdaptations(alunoSelecionado); box.innerHTML=`<p><strong>Aluno:</strong> ${escapeHtml(alunoSelecionado.nome)}</p><p><strong>Turma:</strong> ${escapeHtml(alunoSelecionado.turma)} ${alunoSelecionado.numero?`• <strong>Nº:</strong> ${escapeHtml(alunoSelecionado.numero)}`:''}</p><p><strong>Diagnóstico/laudo:</strong> ${escapeHtml(alunoSelecionado.diagnostico||'Não informado')}</p><p><strong>Orientações da planilha:</strong> ${escapeHtml(alunoSelecionado.orientacoes||alunoSelecionado.adaptacao||'Não informado')}</p><p><strong>Adaptações detectadas:</strong> ${escapeHtml(rules.map(r=>r.title).join('; ') || 'Adaptação básica')}</p>`; renderActiveAdaptations(rules); renderSugestoesPedagogicas(alunoSelecionado); }
 
   async function salvarComplementoProfessor(){ if(!alunoSelecionado){ setMsg('profMsg','Selecione um aluno.','error'); return; } try{ await db.ref('alunos/'+alunoSelecionado.id+'/complementoProfessor').set(norm($('complementoProfessor').value)); await audit('salvar_complemento_professor',{alunoId:alunoSelecionado.id}); setMsg('profMsg','Complemento salvo com sucesso.','ok'); }catch(error){ setMsg('profMsg', firebaseError(error),'error'); } }
 
@@ -906,33 +1083,56 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
   function prefersMultiple(aluno){ const formato=$('formatoQuestoes')?.value; if(formato==='multipla') return true; if(formato==='discursiva') return false; return detectAdaptations(aluno).some(r=>r.id==='multipla'); }
   function renderActiveAdaptations(rules){ const box=$('adaptRulesBox'); if(!box)return; box.innerHTML=rules.map(r=>`<div class="card-mini active"><strong>${escapeHtml(r.title)}</strong><p>${escapeHtml(r.what)}</p></div>`).join(''); }
 
+  function pontuarItemBancoParaIa(item, disciplina, tema){
+    const d=lower(disciplina), t=lower(tema);
+    const itemDisc=lower(item.disciplina), itemTema=lower(item.tema);
+    let score=0;
+    if(d && itemDisc===d) score+=8;
+    else if(d && itemDisc && (itemDisc.includes(d)||d.includes(itemDisc))) score+=4;
+    t.split(/\s+/).filter(x=>x.length>3).forEach(x=>{ if(itemTema.includes(x)) score+=2; });
+    if(t && itemTema===t) score+=8;
+    return score;
+  }
+
+  function obterMaterialDoBancoParaIa(disciplina, tema){
+    if(!$('usarBancoNaIa')?.checked || !bancoQuestoesCache.length) return '';
+    const candidatos=bancoQuestoesCache.map(item=>({item,score:pontuarItemBancoParaIa(item,disciplina,tema)}))
+      .filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,8);
+    return candidatos.map(({item})=>`EXERCÍCIOS DE REFERÊNCIA DO PROFESSOR\nDisciplina: ${item.disciplina||disciplina}\nTema: ${item.tema||tema}\n${editorContentToPlainText(item.conteudo||'').slice(0,3500)}`)
+      .join('\n\n').slice(0,18000);
+  }
+
 
 
   async function fillAutomaticQuestions(){
     if(!alunoSelecionado){ setMsg('profMsg','Selecione um aluno.','error'); return false; }
 
     const campoConteudo = $('conteudoMinistrado');
-    const conteudo = norm(campoConteudo ? campoConteudo.value : '');
+    const conteudoDigitado = norm(campoConteudo ? campoConteudo.value : '');
 
     if(!campoConteudo){
       setMsg('profMsg','Campo de conteúdo ministrado não encontrado na tela. Atualize esta versão do projeto.','error');
       return false;
     }
 
-    if(conteudo.length < 25){
+    if(conteudoDigitado.length < 25){
       campoConteudo.focus();
       setMsg('profMsg','Cole primeiro o conteúdo ministrado. A IA local do Ensino Médio gera as questões com base nesse texto.','error');
       return false;
     }
 
-    const qtd=Math.max(1, Math.min(25, parseInt($('qtdQuestoes').value||'6',10)));
+    const formato=norm($('formatoQuestoes')?.value || 'misto');
+    const qtdObjetivas=formato==='misto'?Math.max(1,Math.min(20,parseInt($('qtdObjetivas')?.value||'3',10))):(formato==='multipla'?Math.max(1,Math.min(25,parseInt($('qtdQuestoes')?.value||'6',10))):0);
+    const qtdDiscursivas=formato==='misto'?Math.max(1,Math.min(20,parseInt($('qtdDiscursivas')?.value||'3',10))):(formato==='discursiva'?Math.max(1,Math.min(25,parseInt($('qtdQuestoes')?.value||'6',10))):0);
+    const qtd=Math.max(1,Math.min(25,qtdObjetivas+qtdDiscursivas));
     const disciplina=norm($('disciplina').value)||'disciplina';
     const tema=norm($('temaConteudo').value)||'conteúdo estudado';
+    const materialBanco=obterMaterialDoBancoParaIa(disciplina,tema);
+    const conteudo=[conteudoDigitado,materialBanco].filter(Boolean).join('\n\n');
     const dificuldade=norm($('dificuldade').value)||'Média';
-    const formato=norm($('formatoQuestoes')?.value || 'misto');
     const modo=getModoAdaptacao(alunoSelecionado);
-
-    let text = gerarQuestoesIA(conteudo, {qtd, disciplina, tema, dificuldade, formato, modo, aluno:alunoSelecionado});
+    const opts={qtd,qtdObjetivas,qtdDiscursivas,disciplina,tema,dificuldade,formato,modo,aluno:alunoSelecionado};
+    let text=gerarQuestoesIA(conteudo,opts);
     if(needsUpper(alunoSelecionado)) text=text.toUpperCase();
 
     const htmlBonito = renderGeneratedActivityHtml(text, {
@@ -946,13 +1146,14 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
     });
 
     setEditorContent(htmlBonito);
-    setMsg('profMsg',`IA local Ensino Médio criou ${qtd} questão(ões), analisou o conteúdo e formatou a atividade no modelo da prévia.`,'ok');
+    const origemBanco=materialBanco?' Também foram considerados exercícios compatíveis do seu banco.':'';
+    setMsg('profMsg',`IA pedagógica local criou ${qtd} questão(ões): ${qtdObjetivas} objetiva(s) e ${qtdDiscursivas} discursiva(s).${origemBanco} Revise antes de aplicar.`,'ok');
     return true;
   }
 
   async function gerarAutomatico(){
     const btn = $('gerarAutomatico');
-    return withBusyState(btn,'IA local Ensino Médio analisando conteúdo...', async()=>{
+    return withBusyState(btn,'IA local analisando o conteúdo...', async()=>{
       await wait(140);
       await fillAutomaticQuestions();
     });
@@ -960,6 +1161,8 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
 
   function renderGeneratedActivityHtml(text, info){
     const qs = parseQuestoes(text, info.modo || 'basica');
+    const supportMode=$('modoTextoApoio')?.value||'auto';
+    const supportText=norm($('textoApoioGeral')?.value||'');
     const header = `
       <section class="ai-generated-activity">
         <div class="ai-activity-cover">
@@ -971,7 +1174,10 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
     `;
     const cards = qs.map((q,idx)=>{
       const options = q.options?.length ? `<ol class="ai-options" type="A">${q.options.map(o=>`<li>${escapeHtml(String(o).replace(/^[A-E][).]\s*/i,''))}</li>`).join('')}</ol>` : '';
-      const body = q.body?.filter(x=>norm(x)).map(x=>`<p>${escapeHtml(x)}</p>`).join('') || '';
+      const originalBody = q.body?.filter(x=>norm(x)).map(x=>`<p>${escapeHtml(x)}</p>`).join('') || '';
+      const shouldSupport=supportMode==='todos'||(supportMode==='auto'&&originalBody);
+      const supportContent=supportText||editorContentToPlainText(originalBody);
+      const body = supportMode==='nenhum'?'':(shouldSupport&&supportContent?`<div class="support-text"><strong>Texto de apoio</strong><p>${escapeHtml(supportContent)}</p></div>`:originalBody);
       const hint = q.hint ? `<div class="ai-hint"><strong>Dica:</strong> ${escapeHtml(q.hint)}</div>` : '';
       const lines = Array.from({length:q.linhas||3},()=>'<div></div>').join('');
       return `
@@ -1082,10 +1288,7 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
     const formato = lower(opts.formato || 'misto');
     if(formato.includes('multipla')) return true;
     if(formato.includes('discursiva')) return false;
-    if(prefersMultiple(opts.aluno)) return i % 3 !== 0;
-    if(opts.modo==='completa') return i % 2 === 1;
-    if(analise.disciplina.key==='matematica' || analise.disciplina.key==='fisica' || analise.disciplina.key==='quimica') return i % 2 === 0;
-    return i % 2 === 1;
+    return i<=Math.max(1,parseInt(opts.qtdObjetivas||Math.ceil((opts.qtd||6)/2),10));
   }
 
   function montarQuestaoEnsinoMedio(ctx){
@@ -1797,24 +2000,62 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
     }catch(error){ setMsg('profMsg', firebaseError(error),'error'); }
   }
 
-  async function buildPaperHtml(aluno){
-    const modo=getModoAdaptacao(aluno);
-    const rules=detectAdaptations(aluno);
+  function alunoPrecisaAdaptacao(aluno){
+    const ids=detectAdaptations(aluno).map(r=>r.id);
+    return ids.some(id=>!['nome','fonte','simples','qr'].includes(id));
+  }
+
+  function prepararConteudoParaVersao(html,variant,aluno){
+    if(!variant) return html;
+    const temp=document.createElement('div');
+    temp.innerHTML=sanitizePastedHtml(html||'');
+    const cards=temp.querySelectorAll('.ai-question-card,.question');
+    if(variant==='normal'){
+      temp.querySelectorAll('.ai-hint,.hint').forEach(el=>el.remove());
+      cards.forEach(card=>card.classList.remove('complete','adapted-version'));
+    }else{
+      cards.forEach(card=>{
+        card.classList.add('complete','adapted-version');
+        if(!card.querySelector('.ai-hint,.hint')) card.querySelector('h3,.q-title')?.insertAdjacentHTML('afterend','<div class="ai-hint"><strong>Dica:</strong> Leia uma informação por vez e destaque o comando.</div>');
+        const hasOptions=Boolean(card.querySelector('.ai-options,.options'));
+        const lines=card.querySelector('.answer-lines');
+        if(lines&&!hasOptions){ while(lines.children.length<5) lines.appendChild(document.createElement('div')); }
+      });
+      if(needsUpper(aluno)){
+        const walker=document.createTreeWalker(temp,NodeFilter.SHOW_TEXT);
+        let node; while((node=walker.nextNode())) node.nodeValue=node.nodeValue.toUpperCase();
+      }
+    }
+    return temp.innerHTML;
+  }
+
+  async function buildPaperHtml(aluno,forcedVariant=null){
+    selecionarImagemEditor(null);
+    const effectiveAluno=forcedVariant==='normal'?{}:aluno;
+    const modo=forcedVariant==='normal'?'basica':getModoAdaptacao(aluno);
+    const rules=detectAdaptations(effectiveAluno);
     renderActiveAdaptations(rules);
-    const qs=parseQuestoes(getEditorContent(), modo).map((q,i)=>adaptQuestion(q,i,aluno,modo));
+    const paperContent=prepararConteudoParaVersao(getEditorContent(),forcedVariant,aluno);
+    const qs=parseQuestoes(paperContent, modo).map((q,i)=>adaptQuestion(q,i,effectiveAluno,modo));
     const professor=currentProfile?.nome||currentProfile?.email||'Professor(a)';
     const codigo='MAX-'+Date.now().toString(36).toUpperCase();
-    const type=norm($('tipoDocumento').value)||'AVALIAÇÃO';
-    const maybeUpper=needsUpper(aluno);
+    const type=getDocumentType();
+    const maybeUpper=forcedVariant==='normal'?false:needsUpper(aluno);
     const mapText=(s)=> maybeUpper ? String(s).toUpperCase() : String(s);
     const qrText=buildQrPayload(aluno, rules, professor, codigo, type);
     const qrImg=await makeQr(qrText);
     const instructions=buildInstructionText(rules, modo);
     const disciplina=escapeHtml(mapText($('disciplina').value||'________________'));
     const valor=escapeHtml(mapText($('valorDocumento').value||'___'));
+    const headerNameMode=$('modoNomeCabecalho')?.value||'preenchido';
+    const studentField=headerNameMode==='oculto'?'':`<div class="paper-field span-all"><strong>Aluno:</strong> ${headerNameMode==='linha'?'____________________________________________':escapeHtml(mapText(aluno.nome))}</div>`;
+    const qrPosition=$('posicaoQr')?.value||'cabecalho';
+    const qrBlock=`<div class="paper-sign-panel"><div class="qr-title">ASSINATURA DIGITAL</div>${qrImg?`<img class="qr-img" src="${qrImg}" alt="QR Code da assinatura digital">`:`<div class="qr-fallback">${escapeHtml(codigo)}</div>`}<div class="qr-caption">Registro das adaptações</div></div>`;
+    const versionLabel=forcedVariant?`<div class="paper-version-label ${forcedVariant}">${forcedVariant==='normal'?'VERSÃO NORMAL':'VERSÃO ADAPTADA'}</div>`:'';
     return `<div class="paper paper-pro">
       <div class="paper-frame">
-        <header class="paper-pro-header">
+        ${versionLabel}
+        <header class="paper-pro-header ${qrPosition==='cabecalho'?'':'no-qr'}">
           <div class="paper-logo-panel">
             <img class="paper-school-logo" src="${SCHOOL_LOGO}" alt="Logo da Escola Máximu's">
           </div>
@@ -1823,7 +2064,7 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
             <div class="paper-subtitle">Ensino Infantil • Fundamental • Médio • Técnico</div>
             <div class="paper-doc-type">${escapeHtml(mapText(type))}</div>
             <div class="paper-meta-grid">
-              <div class="paper-field span-all"><strong>Aluno:</strong> ${escapeHtml(mapText(aluno.nome))}</div>
+              ${studentField}
               <div class="paper-field"><strong>Turma:</strong> ${escapeHtml(mapText(aluno.turma))}</div>
               <div class="paper-field"><strong>Nº:</strong> ${escapeHtml(mapText(aluno.numero||'____'))}</div>
               <div class="paper-field span-all"><strong>Disciplina:</strong> ${disciplina}</div>
@@ -1832,11 +2073,7 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
               <div class="paper-field"><strong>Valor:</strong> ${valor} &nbsp;&nbsp; <strong>Nota:</strong> ______</div>
             </div>
           </div>
-          <div class="paper-sign-panel">
-            <div class="qr-title">ASSINATURA DIGITAL</div>
-            ${qrImg?`<img class="qr-img" src="${qrImg}" alt="QR Code da assinatura digital">`:`<div class="qr-fallback">${escapeHtml(codigo)}</div>`}
-            <div class="qr-caption">JSON das adaptações no QR Code</div>
-          </div>
+          ${qrPosition==='cabecalho'?qrBlock:''}
         </header>
 
         <section class="paper-attention">
@@ -1850,6 +2087,7 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
         <footer class="paper-footer">
           <div class="teacher-sign"><div class="line"></div><strong>${escapeHtml(mapText(professor))}</strong><br>Assinatura do(a) professor(a)</div>
           <div class="document-code">Código do documento: ${escapeHtml(codigo)}</div>
+          ${qrPosition==='rodape'?qrBlock:''}
         </footer>
       </div>
     </div>`;
@@ -1915,30 +2153,57 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
 
   async function exportarPdf(turmaInteira){
     if(!window.jspdf?.jsPDF){ setMsg('profMsg','Biblioteca de PDF não carregada. Verifique a internet.','error'); return; }
-    const targets=turmaInteira?alunosCache.filter(a=>norm(a.turma)===norm($('profTurmaSelect').value)):[alunoSelecionado];
-    if(!targets.length || !targets[0]){ setMsg('profMsg','Nenhum aluno selecionado.','error'); return; }
+    const turma=alunosCache.filter(a=>norm(a.turma)===norm($('profTurmaSelect').value));
+    const modoLote=$('modoLoteTurma')?.value||'inteligente';
+    let jobs;
+    if(!turmaInteira) jobs=[{aluno:alunoSelecionado,variant:null}];
+    else if($('gerarQuantidadeMaisAdaptadas')?.checked){
+      const quantidade=Math.max(1,Math.min(100,parseInt($('qtdProvasNormais')?.value||'1',10)));
+      const turmaNome=norm($('profTurmaSelect')?.value);
+      const alunoGenerico={id:'prova-normal',nome:'____________________________________________',turma:turmaNome,numero:'____'};
+      const normais=Array.from({length:quantidade},(_,i)=>({aluno:alunoGenerico,variant:'normal',copyNumber:i+1}));
+      const adaptadas=turma.filter(alunoPrecisaAdaptacao).map(aluno=>({aluno,variant:'adaptada'}));
+      jobs=[...normais,...adaptadas];
+    }
+    else if(modoLote==='duas-versoes') jobs=turma.flatMap(aluno=>[{aluno,variant:'normal'},{aluno,variant:'adaptada'}]);
+    else if(modoLote==='somente-normal') jobs=turma.map(aluno=>({aluno,variant:'normal'}));
+    else if(modoLote==='somente-adaptada') jobs=turma.map(aluno=>({aluno,variant:'adaptada'}));
+    else jobs=turma.map(aluno=>({aluno,variant:alunoPrecisaAdaptacao(aluno)?'adaptada':'normal'}));
+    if(!jobs.length || !jobs[0]?.aluno){ setMsg('profMsg','Nenhum aluno selecionado.','error'); return; }
     const btn = turmaInteira ? $('baixarPdfTurma') : $('baixarPdfAluno');
     try{
       await withBusyState(btn,'Gerando atividade/prova...', async()=>{
         if(!norm(editorContentToPlainText(getEditorContent()))) await fillAutomaticQuestions();
-        for(const aluno of targets){
-          const html=await buildPaperHtml(aluno);
+        const zip=turmaInteira&&window.JSZip?new window.JSZip():null;
+        for(const job of jobs){
+          const aluno=job.aluno;
+          const html=await buildPaperHtml(aluno,job.variant);
           const temp=document.createElement('div');
           temp.style.position='fixed';
           temp.style.left='-9999px';
           temp.style.top='0';
           temp.innerHTML=html;
           document.body.appendChild(temp);
-          await htmlToPdf(temp.querySelector('.paper'), `${safeFile(aluno.nome)}_${safeFile(aluno.turma)}_${safeFile($('tipoDocumento').value)}.pdf`);
+          const variantSuffix=job.variant?`_${job.variant==='normal'?'NORMAL':'ADAPTADA'}`:'';
+          const copySuffix=job.copyNumber?`_${String(job.copyNumber).padStart(2,'0')}`:'';
+          const baseName=job.copyNumber?'PROVA_NORMAL':safeFile(aluno.nome);
+          const filename=`${baseName}${copySuffix}_${safeFile(aluno.turma)}_${safeFile(getDocumentType())}${variantSuffix}.pdf`;
+          const blob=await htmlToPdf(temp.querySelector('.paper'), filename, Boolean(zip));
+          if(zip) zip.file(filename,blob);
           document.body.removeChild(temp);
-          await audit('gerar_pdf',{alunoId:aluno.id, turma:aluno.turma});
+          await audit('gerar_pdf',{alunoId:job.copyNumber?null:aluno.id, turma:aluno.turma, versao:job.variant||'individual',copia:job.copyNumber||null});
           await wait(220);
         }
+        if(zip){
+          const zipBlob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+          downloadBlob(`Documentos_${safeFile($('profTurmaSelect').value)}_${safeFile(getDocumentType())}.zip`,zipBlob);
+        }
       });
-      setMsg('profMsg','PDF gerado com sucesso.','ok');
+      setMsg('profMsg',turmaInteira?'Documentos da turma gerados em um único arquivo ZIP.':'PDF gerado com sucesso.','ok');
     }catch(error){ setMsg('profMsg', firebaseError(error),'error'); }
   }
-  async function htmlToPdf(element, filename){
+  function downloadBlob(filename,blob){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1500); }
+  async function htmlToPdf(element, filename, returnBlob=false){
     const {jsPDF}=window.jspdf;
     if(!window.html2canvas) throw new Error('Biblioteca de imagem do PDF não carregada. Verifique a internet e tente novamente.');
     await waitForImages(element);
@@ -1956,39 +2221,53 @@ ${formulas.length ? `Fórmulas/Dados importantes:\n${formulas.map(t=>`- ${t}`).j
     preparePdfPageBreaks(element, pagePx);
     await wait(80);
 
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      windowWidth: 900,
-      scrollX: 0,
-      scrollY: 0
-    });
+    try{
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        windowWidth: 900,
+        scrollX: 0,
+        scrollY: 0
+      });
 
-    const imgData = canvas.toDataURL('image/png', 1.0);
-    const imgH = canvas.height * imgW / canvas.width;
-    let remaining = imgH;
-    let y = margin;
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const imgH = canvas.height * imgW / canvas.width;
+      let remaining = imgH;
+      let y = margin;
 
-    pdf.addImage(imgData, 'PNG', margin, y, imgW, imgH, undefined, 'FAST');
-    remaining -= printableH;
-
-    while(remaining > 8){
-      pdf.addPage();
-      y = margin - (imgH - remaining);
       pdf.addImage(imgData, 'PNG', margin, y, imgW, imgH, undefined, 'FAST');
       remaining -= printableH;
-    }
 
-    pdf.save(filename);
-    removePdfPageBreaks(element);
+      while(remaining > 8){
+        pdf.addPage();
+        y = margin - (imgH - remaining);
+        pdf.addImage(imgData, 'PNG', margin, y, imgW, imgH, undefined, 'FAST');
+        remaining -= printableH;
+      }
+
+      const pages=pdf.getNumberOfPages();
+      for(let page=1;page<=pages;page++){
+        pdf.setPage(page);
+        pdf.setFillColor(255,255,255);
+        pdf.rect(0,pageH-15,pageW,15,'F');
+        pdf.setTextColor(75,85,99);
+        pdf.setFontSize(8.5);
+        pdf.text(`${getDocumentType()} • Página ${page} de ${pages}`,pageW/2,pageH-6,{align:'center'});
+      }
+      const blob=returnBlob?pdf.output('blob'):null;
+      if(!returnBlob) pdf.save(filename);
+      return blob;
+    }finally{
+      removePdfPageBreaks(element);
+    }
   }
 
   function preparePdfPageBreaks(element, pagePx){
     removePdfPageBreaks(element);
-    const targets = [...element.querySelectorAll('.ai-question-card,.question,.paper-attention,.paper-footer,.teacher-sign,.free-content > h2,.free-content > h3,.free-content > table,.free-content > ul,.free-content > ol')];
+    const targets = [...element.querySelectorAll('.ai-question-card,.question,.paper-attention,.paper-footer,.teacher-sign,.support-text,figure,.free-content > h2,.free-content > h3,.free-content > table,.free-content > ul,.free-content > ol')];
     if(!targets.length || !pagePx || pagePx < 500) return;
     targets.forEach(target=>{
       const root = element.getBoundingClientRect();

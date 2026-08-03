@@ -3,3 +3,7 @@
 *.key
 secrets.json
 api-key.txt
+functions/node_modules/
+.firebase/
+firebase-debug.log
+*.secret.local
